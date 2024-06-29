@@ -21,6 +21,15 @@ define_language! {
         "sin" = Sin(Id),
         "cos" = Cos(Id),
         "tan" = Tan(Id),
+        "sinh" = Sinh(Id),
+        "cosh" = Cosh(Id),
+        "tanh" = Tanh(Id),
+        "subst" = Subst([Id; 3]),
+        "exp" = Exp([Id; 1]),
+
+        "erf" = Erf([Id;1]),
+
+        "pi" = Pi,
 
         Constant(Constant),
         Var(Symbol),
@@ -190,6 +199,59 @@ fn pred3(
     }
 }
 
+fn pred4(
+    a: &str,
+    b: &str,
+    c: &str,
+    d: &str,
+    pred: impl Fn(Num, Num, Num, Num) -> bool,
+) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    let a = a.parse().unwrap();
+    let b = b.parse().unwrap();
+    let c = c.parse().unwrap();
+    let d = d.parse().unwrap();
+    move |egraph, _, subst| {
+        if let (&Some((a, _)), &Some((b, _)), &Some((c, _)), &Some((d, _))) = (
+            &egraph[subst[a]].data,
+            &egraph[subst[b]].data,
+            &egraph[subst[c]].data,
+            &egraph[subst[d]].data,
+        ) {
+            return pred(a, b, c, d);
+        } else {
+            true
+        }
+    }
+}
+
+fn pred5(
+    a: &str,
+    b: &str,
+    c: &str,
+    d: &str,
+    e: &str,
+    pred: impl Fn(Num, Num, Num, Num, Num) -> bool,
+) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    let a = a.parse().unwrap();
+    let b = b.parse().unwrap();
+    let c = c.parse().unwrap();
+    let d = d.parse().unwrap();
+    let e = e.parse().unwrap();
+    move |egraph, _, subst| {
+        if let (&Some((a, _)), &Some((b, _)), &Some((c, _)), &Some((d, _)), &Some((e, _))) = (
+            &egraph[subst[a]].data,
+            &egraph[subst[b]].data,
+            &egraph[subst[c]].data,
+            &egraph[subst[d]].data,
+            &egraph[subst[e]].data,
+        ) {
+            return pred(a, b, c, d, e);
+        } else {
+            true
+        }
+    }
+}
+
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> {
     
@@ -201,10 +263,11 @@ pub fn rules() -> Vec<Rewrite> {
 
     rw!("sub-canon"; "(- ?a ?b)" => "(+ ?a (* -1 ?b))"),
     rw!("div-canon"; "(/ ?a ?b)" => "(* ?a (^ ?b -1))" if is_not_zero("?b")),
-    // rw!("canon-sub"; "(+ ?a (* -1 ?b))"   => "(- ?a ?b)"),
-    // rw!("canon-div"; "(* ?a (^ ?b -1))" => "(/ ?a ?b)" if is_not_zero("?b")),
+    rw!("canon-sub"; "(+ ?a (* -1 ?b))"   => "(- ?a ?b)"),
+    rw!("canon-div"; "(* ?a (^ ?b -1))" => "(/ ?a ?b)" if is_not_zero("?b")),
 
     rw!("zero-add"; "(+ ?a 0)" => "?a"),
+    rw!("same-add"; "(+ ?a ?a)" => "(* 2 ?a)"),
     rw!("zero-mul"; "(* ?a 0)" => "0"),
     rw!("one-mul";  "(* ?a 1)" => "?a"),
 
@@ -221,6 +284,7 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("pow0"; "(^ ?x 0)" => "1"
         if is_not_zero("?x")),
     rw!("pow1"; "(^ ?x 1)" => "?x"),
+    rw!("pow1-rev"; "?x" => "(^ ?x 1)"),
     rw!("pow2"; "(^ ?x 2)" => "(* ?x ?x)"),
     rw!("pow-recip"; "(^ ?x -1)" => "(/ 1 ?x)"
         if is_not_zero("?x")),
@@ -236,6 +300,10 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("d-cos"; "(d ?x (cos ?x))" => "(* -1 (sin ?x))"),
 
     rw!("d-ln"; "(d ?x (ln ?x))" => "(/ 1 ?x)" if is_not_zero("?x")),
+
+    rw!("sqrt-pow"; "(sqrt ?x)" => "(^ ?x (/ 1 2))"),
+
+    rw!("pow-sqrt"; "(^ ?x (/ 1 2))" => "(sqrt ?x)"),
 
     rw!("d-power";
         "(d ?x (^ ?f ?g))" =>
@@ -255,16 +323,28 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("i-dif"; "(i (- ?f ?g) ?x)" => "(- (i ?f ?x) (i ?g ?x))"),
     rw!("i-parts"; "(i (* ?a ?b) ?x)" =>
         "(- (* ?a (i ?b ?x)) (i (* (d ?x ?a) (i ?b ?x)) ?x))"),
+    // eigenmath rule
+    rw!("L5"; "(i (exp (* ?a ?x)) ?x)" => "(/ (exp (* ?a ?x)) ?a)"),
 
     // ---------------------
-    rw!("1.1.1.1.1"; "(i (/ 1 ?x) ?x)" => "(ln ?x)" ),
-    // Int[x_^m_., x_Symbol] := x^(m + 1)/(m + 1) /; FreeQ[m, x] && NeQ[m, -1]
-    rw!("1.1.1.1.2"; "(i (^ ?x ?m) ?x)" => "(/ (^ ?x (+ ?m 1)) (+ ?m 1))"),
-    // Int[(a_. + b_.*x_)^m_, x_Symbol] := (a + b*x)^(m + 1)/(b*(m + 1)) /; FreeQ[{a, b, m}, x] && NeQ[m, -1]
-    rw!("1.1.1.1.4"; r"(i (^ (+ ?a (* ?b ?x)) ?m) ?x)" => "(/ (^ (+ ?a (* ?b ?x)) (+ ?m 1)) (* ?b (+ ?m 1)))"
-    if freeq(&["?a","?b","?m",], "?x")
-    if pred1("?m", |x| x != 1.into())
+    rw!("1.1.1.1L4"; "(i (/ 1 ?x) ?x)" => "(ln ?x)" ),
+
+    rw!("1.1.1.1L5  "; "(i (^ ?x ?m) ?x)" => "(/ (^ ?x (+ ?m 1)) (+ ?m 1))"
+    if freeq(&["?m"], "?x")
+    if pred1("?m", |m| m != (-1).into())),
+
+    rw!("1.1.1.1L7"; "(i (^ (+ ?a (* ?b ?x)) ?m)  ?x)" => "(/ (/ (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (+ 1 ?m)) ?b)"
+    if freeq(&["?a","?b","?m" ], "?x")
+    if pred1("?m", |m| m != (-1).into())
+    ),                      
+    rw!("1.1.1.2L4";"(i (* (^ (+ ?a (* ?b ?x)) ?m) (+ ?c (* ?d ?x)))  ?x)" => "(/ (/ (* ?d (* ?x (^ (+ ?a (* ?b ?x)) (+ 1 ?m)))) (+ 2 ?m)) ?b)" 
+    if freeq(&["?a","?b","?c","?d","?m"], "?x")
+    if pred5("?a","?b","?c","?d","?m", |a,b,c,d,m|a*d - b*c*(m + 2)==0.into())
     ),
+    rw!("1.1.1.2L5";"(i (/ (^ (+ ?c (* ?d ?x)) -1) (+ ?a (* ?b ?x)))  ?x)"=>"(i (^ (+ (* ?a ?c) (* ?b (* ?d (^ ?x 2)))) -1)  ?x)" 
+    if freeq(&["?a","?b","?c","?d"], "?x")
+    if pred4("?a", "?b", "?c", "?d", |a,b,c,d|b*c + a*d==0.into())
+    ), // FreeQ[{a, b, c, d}, x] && EqQ[b*c + a*d, 0]
     rw!("1.2.2.1L6"; "(i (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p) ?x)" => "(* (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* -2   ?p))   (* (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p)   (i (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* 2   ?p))  ?x)))"
     if freeq(&["?a","?p","?b", "?c"], "?x")
     if pred3("?a", "?b", "?c", |a,b,c| b.pow(2)-a*c*4 == 0.into())
@@ -272,9 +352,12 @@ pub fn rules() -> Vec<Rewrite> {
     ),
     rw!("4.1.0.1L5"; "(i (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   ?n)   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   ?m)) ?x)" => "(/ (/ (/ (/ (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   (+ 1   ?n))   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   (+ 1   ?m)))   (+ 1   ?m))   ?f)   ?b)   ?a)"
     if freeq(&["?a","?b","?e","?f","?m","?n"],"?x")
-    if pred2("?m", "?n", |m,n| m+n+2==0.into())
-    if pred1("?m", |x| x!=(-1).into())
-    ) 
+    if pred2("?m", "?n", |m,n| m+n+2==0.into() && m!=(-1).into())
+    ),
+    rw!("1.1.1.4L6"; "(i (* (^ (+ ?a (* ?b ?x)) ?m) (* (^ (+ ?c (* ?d ?x)) ?n) (* (+ ?e (* ?f ?x)) (+ ?g (* ?h ?x)))))  ?x)" => "(- (/ (/ (/ (/ (* (^ (- (* ?b ?c) (* ?a ?d)) -2) (* (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (* (^ (+ ?c (* ?d ?x)) (+ 1 ?n)) (+ (* (^ ?b 2) (* ?c (* ?d (* ?e (* ?g (+ 1 ?n)))))) (+ (* (^ ?a 2) (* ?c (* ?d (* ?f (* ?h (+ 1 ?n)))))) (+ (* ?a (* ?b (- (+ (* (^ ?d 2) (* ?e (* ?g (+ 1 ?m)))) (* (^ ?c 2) (* ?f (* ?h (+ 1 ?m))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 2 (+ ?m ?n)))))))) (* (- (+ (* (^ ?a 2) (* (^ ?d 2) (* ?f (* ?h (+ 1 ?n))))) (* (^ ?b 2) (- (+ (* (^ ?c 2) (* ?f (* ?h (+ 1 ?m)))) (* (^ ?d 2) (* ?e (* ?g (+ 2 (+ ?m ?n)))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 1 ?m))))))) (* ?a (* ?b (* (^ ?d 2) (* (+ (* ?f ?g) (* ?e ?h)) (+ 1 ?n)))))) ?x))))))) (+ 1 ?n)) (+ 1 ?m)) ?d) ?b) (/ (/ (/ (/ (* (^ (- (* ?b ?c) (* ?a ?d)) -2) (* (+ (* (^ ?a 2) (* (^ ?d 2) (* ?f (* ?h (+ 2 (+ (* 3 ?n) (^ ?n 2))))))) (+ (* ?a (* ?b (* ?d (* (+ 1 ?n) (- (* 2 (* ?c (* ?f (* ?h (+ 1 ?m))))) (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 3 (+ ?m ?n))))))))) (* (^ ?b 2) (- (+ (* (^ ?c 2) (* ?f (* ?h (+ 2 (+ (* 3 ?m) (^ ?m 2)))))) (* (^ ?d 2) (* ?e (* ?g (+ 6 (+ (^ ?m 2) (+ (* 5 ?n) (+ (^ ?n 2) (* ?m (+ 5 (* 2 ?n))))))))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (* (+ 1 ?m) (+ 3 (+ ?m ?n)))))))))) (i (* (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (^ (+ ?c (* ?d ?x)) (+ 1 ?n)))  ?x))) (+ 1 ?n)) (+ 1 ?m)) ?d) ?b))"
+    if freeq(&["?a", "?b", "?c", "?d", "?e", "?f", "?g", "?h"], "?x")
+    if pred2("?m", "?n", |m, n| m < (-1).into() && n < (-1).into())
+    )
     ]}
 
 #[cfg(test)]
@@ -285,8 +368,14 @@ mod test {
     #[test]
     fn test_int() {
         let rules = rules();
-        for start in ["(i (+ (* a (sin x)) (^ x m)) x)", "(i (/ 5 x) x)", 
-        "(i (* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m)) x)"] {
+        for start in [
+        "(+ (* a (sin x)) (^ x m))", "(/ 5 x)", 
+        "(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
+        "(^ (+ a (* b x)) 5)",
+        "a",
+        "(* x 4)",
+        //"(/ x (+ a (* b x)))"
+        ].map(|x| format!("(i {x} x)")) {
             let start = start.parse().unwrap();
             let mut runner = Runner::default()
                 .with_explanations_enabled()
@@ -295,6 +384,7 @@ mod test {
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
             assert!(&best_expr.to_string().contains("(i").not());
+            dbg!(best_expr.to_string());
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
                 .get_flat_strings());
