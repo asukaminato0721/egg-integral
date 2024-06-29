@@ -1,5 +1,3 @@
-use std::ops::Sub;
-
 use egg::{rewrite as rw, *};
 use num::Zero;
 pub type EGraph = egg::EGraph<Math, ConstantFold>;
@@ -22,6 +20,7 @@ define_language! {
 
         "sin" = Sin(Id),
         "cos" = Cos(Id),
+        "tan" = Tan(Id),
 
         Constant(Constant),
         Var(Symbol),
@@ -105,17 +104,23 @@ impl Analysis<Math> for ConstantFold {
         }
     }
 }
-
-fn freeq(v: &str, w: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    let v = v.parse().unwrap();
+///
+///
+/// in mathematica, it's FreeQ[{a,b,c,d...}, x]
+/// in rust, it's freeq(["?a", "?b", "?c", ...], "?x")
+///
+fn freeq<'a>(v: &'a [&'a str], w: &'a str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool + 'a {
     let w = w.parse().unwrap();
     move |egraph, _, subst| {
-        egraph.find(subst[v]) != egraph.find(subst[w])
-            && (egraph[subst[v]].data.is_some()
-                || egraph[subst[v]]
-                    .nodes
-                    .iter()
-                    .any(|n| matches!(n, Math::Var(..))))
+        v.iter().all(|v| {
+            let v = v.parse().unwrap();
+            egraph.find(subst[v]) != egraph.find(subst[w])
+                && (egraph[subst[v]].data.is_some()
+                    || egraph[subst[v]]
+                        .nodes
+                        .iter()
+                        .any(|n| matches!(n, Math::Var(..))))
+        })
     }
 }
 
@@ -134,50 +139,57 @@ fn is_sym(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
 }
 
 fn is_not_zero(var: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    let var = var.parse().unwrap();
+    return pred1(var, |x| x != 0.into());
+}
+
+fn pred1(p: &str, pred: impl Fn(Num) -> bool) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    let p = p.parse().unwrap();
     move |egraph, _, subst| {
-        if let Some(n) = &egraph[subst[var]].data {
-            (n.0) != Default::default()
+        if let &Some((p, _)) = &egraph[subst[p]].data {
+            return pred(p);
         } else {
             true
         }
     }
 }
 
-fn neq(var: &str, val: Num) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    let var = var.parse().unwrap();
+fn pred2(
+    m: &str,
+    n: &str,
+    pred: impl Fn(Num, Num) -> bool,
+) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    let m = m.parse().unwrap();
+    let n = n.parse().unwrap();
     move |egraph, _, subst| {
-        if let Some(n) = &egraph[subst[var]].data {
-            n.0 != val
+        if let (&Some((m, _)), &Some((n, _))) = (&egraph[subst[m]].data, &egraph[subst[n]].data) {
+            return pred(m, n);
         } else {
             true
         }
     }
 }
-
-fn b2_4ac(b: &str, a: &str, c: &str, val: Num) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+fn pred3(
+    a: &str,
+    b: &str,
+    c: &str,
+    pred: impl Fn(Num, Num, Num) -> bool,
+) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
     let a = a.parse().unwrap();
     let b = b.parse().unwrap();
     let c = c.parse().unwrap();
     move |egraph, _, subst| {
-        let a = &egraph[subst[a]].data.clone().expect("find a").0;
-        let b = &egraph[subst[b]].data.clone().unwrap().0;
-        let c = &egraph[subst[c]].data.clone().unwrap().0;
-        return b
-            .pow(2)
-            .sub(a * c * 4)
-            == val;
+        if let (&Some((a, _)), &Some((b, _)), &Some((c, _))) = (
+            &egraph[subst[a]].data,
+            &egraph[subst[b]].data,
+            &egraph[subst[c]].data,
+        ) {
+            return pred(a, b, c);
+        } else {
+            true
+        }
     }
 }
-fn integerq(p: &str) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
-    let p = p.parse().unwrap();
-    move |egraph, _, subst| {
-        let p = &egraph[subst[p]].data.clone().expect("here?").0;
-        return p
-            .sub(Num::new(1, 2))
-            .is_zero();
-    }
-}
+
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> {
     
@@ -215,7 +227,7 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero("?x")),
 
     rw!("d-variable"; "(d ?x ?x)" => "1" if is_sym("?x")),
-    rw!("d-constant"; "(d ?x ?c)" => "0" if is_sym("?x") if freeq("?c", "?x")),
+    rw!("d-constant"; "(d ?x ?c)" => "0" if is_sym("?x") if freeq(&["?c"], "?x")),
 
     rw!("d-add"; "(d ?x (+ ?a ?b))" => "(+ (d ?x ?a) (d ?x ?b))"),
     rw!("d-mul"; "(d ?x (* ?a ?b))" => "(+ (* ?a (d ?x ?b)) (* ?b (d ?x ?a)))"),
@@ -235,7 +247,7 @@ pub fn rules() -> Vec<Rewrite> {
         if is_not_zero("?f")
         if is_not_zero("?g")
     ),
-    rw!("i-coff"; "(i (* ?c ?a) ?x)" => "(* ?c (i ?a ?x))" if freeq("?c", "?x")),
+    rw!("i-coff"; "(i (* ?c ?a) ?x)" => "(* ?c (i ?a ?x))" if freeq(&["?c"], "?x")),
     rw!("i-one"; "(i 1 ?x)" => "?x"),
     rw!("i-cos"; "(i (cos ?x) ?x)" => "(sin ?x)"),
     rw!("i-sin"; "(i (sin ?x) ?x)" => "(* -1 (cos ?x))"),
@@ -250,16 +262,19 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("1.1.1.1.2"; "(i (^ ?x ?m) ?x)" => "(/ (^ ?x (+ ?m 1)) (+ ?m 1))"),
     // Int[(a_. + b_.*x_)^m_, x_Symbol] := (a + b*x)^(m + 1)/(b*(m + 1)) /; FreeQ[{a, b, m}, x] && NeQ[m, -1]
     rw!("1.1.1.1.4"; r"(i (^ (+ ?a (* ?b ?x)) ?m) ?x)" => "(/ (^ (+ ?a (* ?b ?x)) (+ ?m 1)) (* ?b (+ ?m 1)))"
-    if freeq("?a", "?x")
-    if freeq("?b", "?x")
-    if freeq("?m", "?x")
-    if neq("?m", 1.into())
+    if freeq(&["?a","?b","?m",], "?x")
+    if pred1("?m", |x| x != 1.into())
     ),
-    rw!("1.2.2.1.6"; "(i (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p) ?x)" => "(* (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* -2   ?p))   (* (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p)   (i (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* 2   ?p))  ?x)))"  if freeq("?a", "?x") if freeq("?p", "?x") if freeq("?b", "?x") if freeq("?c", "?x")
-    if b2_4ac("?b", "?a", "?c", 0.into()) 
-    if integerq("?p")
+    rw!("1.2.2.1L6"; "(i (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p) ?x)" => "(* (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* -2   ?p))   (* (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p)   (i (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* 2   ?p))  ?x)))"
+    if freeq(&["?a","?p","?b", "?c"], "?x")
+    if pred3("?a", "?b", "?c", |a,b,c| b.pow(2)-a*c*4 == 0.into())
+    if pred1("?p", |p| p - Num::new(1, 2) == 0.into())
     ),
-    rw!("try tri"; "(i (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   ?n)   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   ?m)) ?x)" => "(/ (/ (/ (/ (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   (+ 1   ?n))   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   (+ 1   ?m)))   (+ 1   ?m))   ?f)   ?b)   ?a)")
+    rw!("4.1.0.1L5"; "(i (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   ?n)   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   ?m)) ?x)" => "(/ (/ (/ (/ (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   (+ 1   ?n))   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   (+ 1   ?m)))   (+ 1   ?m))   ?f)   ?b)   ?a)"
+    if freeq(&["?a","?b","?e","?f","?m","?n"],"?x")
+    if pred2("?m", "?n", |m,n| m+n+2==0.into())
+    if pred1("?m", |x| x!=(-1).into())
+    ) 
     ]}
 
 #[cfg(test)]
