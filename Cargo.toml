@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 egg = "0.9.5"
+nom = "7"
 num = "0.4.3"
-ordered-float = "4.2.0"
