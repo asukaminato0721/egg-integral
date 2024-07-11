@@ -16,8 +16,8 @@ use nom::{
 /// Int[ x_ ^ a_., x_Symbol ] := xxx /; a > 1
 
 type Res<T, U> = IResult<T, U, VerboseError<T>>;
-fn int(input: &str) -> Res<&str, &str> {
-    context("Int", tag("Int"))(input)
+fn Int(input: &str) -> Res<&str, String> {
+    context("Int", tag("Int"))(input).map(|(x, y)| (x, y.into()))
 }
 fn sym(input: &str) -> Res<&str, String> {
     terminated(
@@ -26,6 +26,9 @@ fn sym(input: &str) -> Res<&str, String> {
         pair(many0(pair(char('_'), opt(char('.')))), alphanumeric0),
     )(input)
     .map(|(x, y)| (x, format!("?{}{}", y.0, y.1))) // ignore x1_XX , just return x1
+}
+fn sym_or_int(input: &str) -> Res<&str, String> {
+    alt((number, sym))(input).map(|(x, y)| (x, format!("{y}")))
 }
 fn number(input: &str) -> Res<&str, String> {
     digit1(input).map(|(x, y)| (x, y.to_owned()))
@@ -47,12 +50,12 @@ fn parse_div(input: &str) -> Res<&str, String> {
         .map(|(x, y)| (x, format!("(/ {} {})", y.0, y.4)))
 }
 fn parse_pow(input: &str) -> Res<&str, String> {
-    tuple((sym, space0, char('^'), space0, sym))(input)
+    tuple((sym_or_int, space0, char('^'), space0, sym_or_int))(input)
         .map(|(x, y)| (x, format!("(^ {} {})", y.0, y.4)))
 }
 fn parse_full(input: &str) -> Res<&str, String> {
     tuple((
-        preceded(space0, int),           // Int 0
+        preceded(space0, Int),           // Int 0
         preceded(space0, char('[')),     // [ 1
         preceded(space0, parse_pow),     // left 2
         preceded(space0, char(',')),     // 3
@@ -102,7 +105,7 @@ mod parse {
     use super::*;
     #[test]
     fn test_frame() {
-        dbg!(parse_full("Int[x_. ^ m_.  ,x_Symbol] := m^x  /; xxxx "));
+        dbg!(parse_full("Int[x_. ^ 5  ,x_Symbol] := m^x  /; xxxx "));
     }
     #[test]
     fn parse_sym() {
@@ -126,5 +129,9 @@ mod parse {
     #[test]
     fn test_freeq() {
         dbg!(parse_freeq("FreeQ[{a,b,c,d,e}, x]"));
+    }
+    #[test]
+    fn test_item() {
+        dbg!(sym_or_int("a1"));
     }
 }
