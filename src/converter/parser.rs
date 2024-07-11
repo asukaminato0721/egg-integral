@@ -1,4 +1,5 @@
-use nom::character::complete::alphanumeric1;
+use nom::character::complete::{alphanumeric1, one_of, space1};
+use nom::combinator::map;
 use nom::sequence::{delimited, pair, preceded, terminated};
 use nom::{
     branch::alt,
@@ -21,7 +22,8 @@ fn int(input: &str) -> Res<&str, &str> {
 fn sym(input: &str) -> Res<&str, String> {
     terminated(
         pair(alpha1, alphanumeric0),
-        tuple((many0(char('_')), alphanumeric0)),
+        // here allow x_.Symbol, but since this won't happen, so nvm.
+        pair(many0(pair(char('_'), opt(char('.')))), alphanumeric0),
     )(input)
     .map(|(x, y)| (x, format!("?{}{}", y.0, y.1))) // ignore x1_XX , just return x1
 }
@@ -48,12 +50,12 @@ fn parse_pow(input: &str) -> Res<&str, String> {
     tuple((sym, space0, char('^'), space0, sym))(input)
         .map(|(x, y)| (x, format!("(^ {} {})", y.0, y.4)))
 }
-fn parse_expr(input: &str) -> Res<&str, String> {
+fn parse_full(input: &str) -> Res<&str, String> {
     tuple((
         preceded(space0, int),           // Int 0
         preceded(space0, char('[')),     // [ 1
         preceded(space0, parse_pow),     // left 2
-        preceded(space0, char(',')),     //3
+        preceded(space0, char(',')),     // 3
         preceded(space0, sym),           // , x 4
         preceded(space0, char(']')),     // ] 5
         preceded(space0, tag(":=")),     // := 6
@@ -87,13 +89,20 @@ fn parse_freeq(input: &str) -> Res<&str, String> {
     ))(input)
     .map(|(x, y)| (x, format!(r#"freeq(&{:?}, "{}" )"#, y.1, y.4)))
 }
+/// NeQ[x*2]
+/// pred1("?x", |x| x * 2 < 0)
+fn parse_neq(input: &str) -> Res<&str, String> {
+    let expr = delimited(tag("NeQ["), parse_mult, tuple((space0, char(']'), space0)))(input);
+    expr
+}
+
 #[cfg(test)]
 mod parse {
 
     use super::*;
     #[test]
     fn test_frame() {
-        dbg!(parse_expr("Int[x_^ m_,x_Symbol] := m^x  /; xxxx "));
+        dbg!(parse_full("Int[x_. ^ m_.  ,x_Symbol] := m^x  /; xxxx "));
     }
     #[test]
     fn parse_sym() {
