@@ -33,21 +33,13 @@ fn sym_or_int(input: &str) -> Res<&str, String> {
 fn number(input: &str) -> Res<&str, String> {
     digit1(input).map(|(x, y)| (x, y.to_owned()))
 }
-fn parse_plus(input: &str) -> Res<&str, String> {
-    tuple((sym, space0, char('+'), space0, sym))(input)
-        .map(|(x, y)| (x, format!("(+ {} {})", y.0, y.4)))
+fn parse_plus_sub(input: &str) -> Res<&str, String> {
+    tuple((sym_or_int, space0, one_of("+-"), space0, sym_or_int))(input)
+        .map(|(x, y)| (x, format!("({} {} {})", y.2, y.0, y.4)))
 }
-fn parse_sub(input: &str) -> Res<&str, String> {
-    tuple((sym, space0, char('-'), space0, sym))(input)
-        .map(|(x, y)| (x, format!("(- {} {})", y.0, y.4)))
-}
-fn parse_mult(input: &str) -> Res<&str, String> {
-    tuple((sym, space0, char('*'), space0, sym))(input)
-        .map(|(x, y)| (x, format!("(* {} {})", y.0, y.4)))
-}
-fn parse_div(input: &str) -> Res<&str, String> {
-    tuple((sym, space0, char('/'), space0, sym))(input)
-        .map(|(x, y)| (x, format!("(/ {} {})", y.0, y.4)))
+fn parse_mult_div(input: &str) -> Res<&str, String> {
+    tuple((sym_or_int, space0, one_of("*/"), space0, sym_or_int))(input)
+        .map(|(x, y)| (x, format!("({} {} {})", y.2, y.0, y.4)))
 }
 fn parse_pow(input: &str) -> Res<&str, String> {
     tuple((sym_or_int, space0, char('^'), space0, sym_or_int))(input)
@@ -86,8 +78,8 @@ fn parse_freeq(input: &str) -> Res<&str, String> {
         tag("FreeQ[{"),
         many1(terminated(sym, opt(char(',')))),
         char('}'),
-        delimited(space0, char(','), space0),
-        delimited(space0, sym, space0),
+        preceded(space0, char(',')),
+        preceded(space0, sym),
         delimited(space0, char(']'), space0),
     ))(input)
     .map(|(x, y)| (x, format!(r#"freeq(&{:?}, "{}" )"#, y.1, y.4)))
@@ -95,10 +87,35 @@ fn parse_freeq(input: &str) -> Res<&str, String> {
 /// NeQ[x*2]
 /// pred1("?x", |x| x * 2 < 0)
 fn parse_neq(input: &str) -> Res<&str, String> {
-    let expr = delimited(tag("NeQ["), parse_mult, tuple((space0, char(']'), space0)))(input);
+    let expr = delimited(
+        tag("NeQ["),
+        parse_mult_div,
+        tuple((space0, char(']'), space0)),
+    )(input);
     expr
 }
-
+/// Sqrt[ expr ]
+fn parse_sqrt(input: &str) -> Res<&str, String> {
+    delimited(tag("Sqrt["), parse_mult_div, char(']'))(input)
+        .map(|(x, y)| (x, format!("(sqrt {y})")))
+}
+/// Sin[ expr ]
+fn parse_sin(input: &str) -> Res<&str, String> {
+    delimited(tag("Sin["), parse_mult_div, char(']'))(input).map(|(x, y)| (x, format!("(sin {y})")))
+}
+/// Cos[ expr ]
+fn parse_cos(input: &str) -> Res<&str, String> {
+    delimited(tag("Cos["), parse_mult_div, char(']'))(input).map(|(x, y)| (x, format!("(cos {y})")))
+}
+fn parse_exp(input: &str) -> Res<&str, String> {
+    delimited(tag("Exp["), parse_mult_div, char(']'))(input).map(|(x, y)| (x, format!("(exp {y})")))
+}
+fn parse_log(input: &str) -> Res<&str, String> {
+    delimited(tag("Log["), parse_mult_div, char(']'))(input).map(|(x, y)| (x, format!("(log {y})")))
+}
+fn parse_bracket(input: &str) -> Res<&str, String> {
+    delimited(char('('), parse_mult_div, char(')'))(input)
+}
 #[cfg(test)]
 mod parse {
 
@@ -120,10 +137,10 @@ mod parse {
     }
     #[test]
     fn test_parse_plus() {
-        dbg!(parse_plus("a+b"));
-        dbg!(parse_sub("a-b"));
-        dbg!(parse_mult("a*b"));
-        dbg!(parse_div("a/b"));
+        dbg!(parse_plus_sub("a+2"));
+        dbg!(parse_plus_sub("a-b"));
+        dbg!(parse_mult_div("a*b"));
+        dbg!(parse_mult_div("a/b"));
         dbg!(parse_pow("a^b"));
     }
     #[test]
@@ -133,5 +150,10 @@ mod parse {
     #[test]
     fn test_item() {
         dbg!(sym_or_int("a1"));
+    }
+
+    #[test]
+    fn test_sqrt() {
+        dbg!(parse_sqrt("Sqrt[x_.*y_.]"));
     }
 }

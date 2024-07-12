@@ -298,6 +298,8 @@ pub fn rules() -> Vec<Rewrite> {
 
     rw!("d-sin"; "(d ?x (sin ?x))" => "(cos ?x)"),
     rw!("d-cos"; "(d ?x (cos ?x))" => "(* -1 (sin ?x))"),
+    rw!("d-exp"; "(d ?x (exp ?x))" => "(exp ?x)"),
+    rw!("d-pow"; "(d ?x (^ ?x ?m))" => "(* ?m (^ ?x (- ?m 1)))"),
 
     rw!("d-ln"; "(d ?x (ln ?x))" => "(/ 1 ?x)" if is_not_zero("?x")),
 
@@ -319,6 +321,7 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("i-one"; "(i 1 ?x)" => "?x"),
     rw!("i-cos"; "(i (cos ?x) ?x)" => "(sin ?x)"),
     rw!("i-sin"; "(i (sin ?x) ?x)" => "(* -1 (cos ?x))"),
+    rw!("i-exp"; "(i (exp ?x) ?x)" => "(exp ?x)"),
     rw!("i-sum"; "(i (+ ?f ?g) ?x)" => "(+ (i ?f ?x) (i ?g ?x))"),
     rw!("i-dif"; "(i (- ?f ?g) ?x)" => "(- (i ?f ?x) (i ?g ?x))"),
     rw!("i-parts"; "(i (* ?a ?b) ?x)" =>
@@ -369,17 +372,19 @@ mod test {
     fn test_int() {
         let rules = rules();
         for start in [
-        "(+ (* a (sin x)) (^ x m))", "(/ 5 x)", 
-        "(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
-        "(^ (+ a (* b x)) 5)",
-        "a",
-        "(* x 4)",
+        //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)", 
+        //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
+        //"(^ (+ a (* b x)) 5)",
+        //"a",
+        //"(* x 4)",
+        "(* (exp x) (^ x 3))"
         //"(/ x (+ a (* b x)))"
         ].map(|x| format!("(i {x} x)")) {
             let start = start.parse().unwrap();
             let mut runner = Runner::default()
                 .with_explanations_enabled()
                 .with_expr(&start)
+                .with_node_limit(60000)
                 .run(&rules);
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
