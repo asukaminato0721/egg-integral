@@ -49,25 +49,23 @@ impl<'a> egg::CostFunction<Math> for MathCostFn<'a> {
         C: FnMut(Id) -> Self::Cost,
     {
         // here just as_ref[0] since egg will return a list of e-class
-        fn is_poly(s: &EGraph, expr: Math) -> bool {
-            match expr {
-                Math::Add([x, y]) | Math::Mul([x, y]) => {
-                    dbg!(s.id_to_expr(x).as_ref());
-                    is_poly(s, s.id_to_expr(x).as_ref()[0].clone())
-                        && is_poly(s, s.id_to_expr(y).as_ref()[0].clone())
-                }
-                Math::Constant(..) | Math::Var(..) => true,
-                _ => false,
-            }
-        }
         let op_cost = match enode {
             Math::Integral([expr, _])
-                if is_poly(
-                    &self.egraph,
-                    self.egraph.id_to_expr(*expr).as_ref()[0].clone(),
-                ) =>
+            // optimize for poly
+                if (self
+                    .egraph
+                    .id_to_expr(*expr)
+                    .as_ref()
+                    .iter()
+                    .all(|x| match x {
+                        Math::Add(..)
+                        | Math::Mul(..)
+                        | Math::Sub(..)
+                        | Math::Constant(..)
+                        | Math::Var(..) => true,
+                        _ => false,
+                    })) =>
             {
-                // dbg!(self.egraph.id_to_expr(*expr).as_ref()[0].clone());
                 1
             }
             Math::Integral(..) => 1000,
@@ -393,12 +391,12 @@ mod test {
     fn test_int() {
         let rules = rules();
         for start in [
-            //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)",
-            //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
-            //"(^ (+ a (* b x)) 5)",
+         //   "(+ (* a (sin x)) (^ x m))", "(/ 5 x)",
+         //   "(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
+         //   "(^ (+ a (* b x)) 5)",
             "a",
             "(* x 4)",
-            "(* (exp x) (^ x 2))", //"(/ x (+ a (* b x)))"
+            "(* (exp x) (^ x 4))", //"(/ x (+ a (* b x)))"
             "(exp x)",
         ]
         .map(|x| format!("(i {x} x)"))
@@ -407,14 +405,14 @@ mod test {
             let mut runner = Runner::default()
                 .with_explanations_enabled()
                 .with_expr(&start)
-                .with_node_limit(60000)
+                .with_node_limit(30000)
                 .run(&rules);
             let costfn = MathCostFn {
                 egraph: &runner.egraph.clone(),
             };
             let extractor = Extractor::new(&runner.egraph, costfn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]).clone();
-            //assert!(!&best_expr.to_string().contains("(i"));
+            assert!(!&best_expr.to_string().contains("(i"));
             dbg!(best_expr.to_string());
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
