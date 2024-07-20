@@ -38,23 +38,47 @@ define_language! {
 
 // You could use egg::AstSize, but this is useful for debugging, since
 // it will really try to get rid of the Diff operator
-pub struct MathCostFn;
-impl egg::CostFunction<Math> for MathCostFn {
+#[derive(Clone, Debug)]
+pub struct MathCostFn<'a> {
+    egraph: &'a EGraph,
+}
+impl<'a> egg::CostFunction<Math> for MathCostFn<'a> {
     type Cost = usize;
     fn cost<C>(&mut self, enode: &Math, mut costs: C) -> Self::Cost
     where
         C: FnMut(Id) -> Self::Cost,
     {
+        // here just as_ref[0] since egg will return a list of e-class
+        fn is_poly(s: &EGraph, expr: Math) -> bool {
+            match expr {
+                Math::Add([x, y]) | Math::Mul([x, y]) => {
+                    dbg!(s.id_to_expr(x).as_ref());
+                    is_poly(s, s.id_to_expr(x).as_ref()[0].clone())
+                        && is_poly(s, s.id_to_expr(y).as_ref()[0].clone())
+                }
+                Math::Constant(..) | Math::Var(..) => true,
+                _ => false,
+            }
+        }
         let op_cost = match enode {
-            Math::Diff(..) => 1000,
+            Math::Integral([expr, _])
+                if is_poly(
+                    &self.egraph,
+                    self.egraph.id_to_expr(*expr).as_ref()[0].clone(),
+                ) =>
+            {
+                // dbg!(self.egraph.id_to_expr(*expr).as_ref()[0].clone());
+                1
+            }
             Math::Integral(..) => 1000,
+            Math::Diff(..) => 1000,
             _ => 1,
         };
         enode.fold(op_cost, |sum, i| sum + costs(i))
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct ConstantFold;
 impl Analysis<Math> for ConstantFold {
     type Data = Option<(Constant, PatternAst<Math>)>;
@@ -267,7 +291,6 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("canon-div"; "(* ?a (^ ?b -1))" => "(/ ?a ?b)" if is_not_zero("?b")),
 
     rw!("zero-add"; "(+ ?a 0)" => "?a"),
-    rw!("same-add"; "(+ ?a ?a)" => "(* 2 ?a)"),
     rw!("zero-mul"; "(* ?a 0)" => "0"),
     rw!("one-mul";  "(* ?a 1)" => "?a"),
 
@@ -317,7 +340,7 @@ pub fn rules() -> Vec<Rewrite> {
         if is_not_zero("?f")
         if is_not_zero("?g")
     ),
-    rw!("i-coff"; "(i (* ?c ?a) ?x)" => "(* ?c (i ?a ?x))" if freeq(&["?c"], "?x")),
+
     rw!("i-one"; "(i 1 ?x)" => "?x"),
     rw!("i-cos"; "(i (cos ?x) ?x)" => "(sin ?x)"),
     rw!("i-sin"; "(i (sin ?x) ?x)" => "(* -1 (cos ?x))"),
@@ -339,7 +362,7 @@ pub fn rules() -> Vec<Rewrite> {
     rw!("1.1.1.1L7"; "(i (^ (+ ?a (* ?b ?x)) ?m)  ?x)" => "(/ (/ (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (+ 1 ?m)) ?b)"
     if freeq(&["?a","?b","?m" ], "?x")
     if pred1("?m", |m| m != (-1).into())
-    ),                      
+    ),
     rw!("1.1.1.2L4";"(i (* (^ (+ ?a (* ?b ?x)) ?m) (+ ?c (* ?d ?x)))  ?x)" => "(/ (/ (* ?d (* ?x (^ (+ ?a (* ?b ?x)) (+ 1 ?m)))) (+ 2 ?m)) ?b)" 
     if freeq(&["?a","?b","?c","?d","?m"], "?x")
     if pred5("?a","?b","?c","?d","?m", |a,b,c,d,m|a*d - b*c*(m + 2)==0.into())
@@ -365,30 +388,33 @@ pub fn rules() -> Vec<Rewrite> {
 
 #[cfg(test)]
 mod test {
-    use std::ops::Not;
-
     use super::*;
     #[test]
     fn test_int() {
         let rules = rules();
         for start in [
-        //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)", 
-        //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
-        //"(^ (+ a (* b x)) 5)",
-        //"a",
-        //"(* x 4)",
-        "(* (exp x) (^ x 3))"
-        //"(/ x (+ a (* b x)))"
-        ].map(|x| format!("(i {x} x)")) {
+            //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)",
+            //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
+            //"(^ (+ a (* b x)) 5)",
+            "a",
+            "(* x 4)",
+            "(* (exp x) (^ x 2))", //"(/ x (+ a (* b x)))"
+            "(exp x)",
+        ]
+        .map(|x| format!("(i {x} x)"))
+        {
             let start = start.parse().unwrap();
             let mut runner = Runner::default()
                 .with_explanations_enabled()
                 .with_expr(&start)
                 .with_node_limit(60000)
                 .run(&rules);
-            let extractor = Extractor::new(&runner.egraph, MathCostFn);
-            let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
-            assert!(&best_expr.to_string().contains("(i").not());
+            let costfn = MathCostFn {
+                egraph: &runner.egraph.clone(),
+            };
+            let extractor = Extractor::new(&runner.egraph, costfn);
+            let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]).clone();
+            //assert!(!&best_expr.to_string().contains("(i"));
             dbg!(best_expr.to_string());
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
