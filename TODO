@@ -1,0 +1,15 @@
+1. filter rule done
+2. finish parser half done
+3. rewrite infix to prefix
+
+Int[ body, x_Symbol ] := body /; cond
+
+body consist with sym, num, f[], +-*/^, ()  
+
+4. use `include!` put the rule into main.rs(egglog provide dsl, but missing step functionality, so skip)
+
+5. test
+
+---
+
+run `python gen.py` and get `rule.egg`
