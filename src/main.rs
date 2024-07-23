@@ -341,11 +341,12 @@ mod test {
                 .with_explanations_enabled()
                 .with_expr(&start)
                 .with_node_limit(100000)
-                .with_iter_limit(40)
+                // .with_iter_limit(400)
+                .with_scheduler(BackoffScheduler::default().with_initial_match_limit(3000))
                 .run(&rules);
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
-           // assert!(&best_expr.to_string().contains("(i").not());
+            assert!(&best_expr.to_string().contains("(i").not());
             dbg!(best_expr.to_string());
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
