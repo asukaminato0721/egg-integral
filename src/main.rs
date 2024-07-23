@@ -34,8 +34,8 @@ impl egg::CostFunction<Math> for MathCostFn {
         C: FnMut(Id) -> Self::Cost,
     {
         let op_cost = match enode {
-            Math::Diff(..) => 1000,
-            Math::Integral(..) => 1000,
+            Math::Diff(..) => 1,
+            Math::Integral(..) => 100,
             _ => 1,
         };
         enode.fold(op_cost, |sum, i| sum + costs(i))
@@ -243,7 +243,7 @@ fn pred5(
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> {
     
-     vec![
+vec![
     rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
     rw!("comm-mul";  "(* ?a ?b)"        => "(* ?b ?a)"),
     rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
@@ -341,6 +341,7 @@ mod test {
                 .with_explanations_enabled()
                 .with_expr(&start)
                 .with_node_limit(100000)
+                .with_iter_limit(40)
                 .run(&rules);
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
@@ -349,6 +350,8 @@ mod test {
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
                 .get_flat_strings());
+            runner.print_report();
+            dbg!(MathCostFn.cost_rec(&best_expr));
         }
     }
 }
