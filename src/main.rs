@@ -375,16 +375,18 @@ mod test {
         //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)", 
         //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
         //"(^ (+ a (* b x)) 5)",
-        //"a",
-        //"(* x 4)",
-        "(* (exp x) (^ x 3))"
-        //"(/ x (+ a (* b x)))"
+        "a",
+        "(* x 4)",
+        "(* (exp x) (^ x 3))",
+        "(* (sqrt x) (ln x))",
+        "(* (ln x) (sqrt x))",
         ].map(|x| format!("(i {x} x)")) {
             let start = start.parse().unwrap();
             let mut runner = Runner::default()
                 .with_explanations_enabled()
                 .with_expr(&start)
                 .with_node_limit(60000)
+                .with_scheduler(BackoffScheduler::default().with_initial_match_limit(3000))
                 .run(&rules);
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
