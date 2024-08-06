@@ -1,3 +1,29 @@
+(* convert expr to egg *)
+f[Plus[x_,y_]]:= StringTemplate["(+ `1` `2`)"][f[x], f[y]];
+f[Subtract[x_,y_]]:= StringTemplate["(- `1` `2`)"][f[x], f[y]];
+f[Times[x_,y_]]:= StringTemplate["(* `1` `2`)"][f[x], f[y]];
+f[Divide[x_,y_]]:= StringTemplate["(/ `1` `2`)"][f[x], f[y]];
+f[Power[x_,y_]]:= StringTemplate["(^ `1` `2`)"][f[x], f[y]];
+f[Sin[x_]] := StringTemplate["(sin `1`)"][f[x]];
+f[sin[x_]] := StringTemplate["(sin `1`)"][f[x]];
+f[Cos[x_]] := StringTemplate["(cos `1`)"][f[x]];
+f[cos[x_]] := StringTemplate["(cos `1`)"][f[x]];
+f[Tan[x_]] := StringTemplate["(tan `1`)"][f[x]];
+f[tan[x_]] := StringTemplate["(tan `1`)"][f[x]];
+
+f[ArcSin[x_]] := StringTemplate["(arcsin `1`)"][f[x]];
+f[ArcCos[x_]] := StringTemplate["(arccos `1`)"][f[x]];
+f[ArcTan[x_]] := StringTemplate["(arctan `1`)"][f[x]];
+
+f[Gamma[x_,y_]] := StringTemplate["(gamma `1` `2`)"][f[x], f[y]];
+f[ArcTan[x_]] := StringTemplate["(arctan `1`)"][f[x]];
+f[Sqrt[x_]] := StringTemplate["(sqrt `1`)"][f[x]];
+f[Log[x_]] := StringTemplate["(ln `1`)"][f[x]];
+f[Int[k_, x_]] := StringTemplate["(i `1` `2`)"][f[k], f[x]];
+f[x_Symbol] := "?" <> ToString[x];
+f[x_?IntegerQ] := ToString[x];
+f[x_Rational] := StringTemplate["(/ `1` `2`)"][ToString[Numerator[x]], ToString[Denominator[x]]];
+
 pred[And[x_,y_]] := StringTemplate["(`1` && `2`)"][pred[x],pred[y]];
 pred[Or[x_,y_]] := StringTemplate["(`1` || `2`)"][pred[x], pred[y]];
 pred[Not[x_]] := StringTemplate["(!`1`)"][pred[x]];
@@ -98,20 +124,21 @@ pred[integerQ[p_]] := StringTemplate["is_interger(\"?`p`\")"][<|"p" -> p|>]
 pred[x_] := If[ StringTrim[ToString[x]] != "" , StringTemplate["not support `x` yet"][<|"x" -> ToString[x]|>]];
 
 
-line[{id_, left_, right_}] := Print[StringTemplate["rw!( \"`1`\"   ;   `2`   =>  `3` )"][id, ToString@CForm@ left, ToString@CForm@ right]];
+line[{id_, left_, right_}] := Print[StringTemplate["rw!( \"`1`\" ; \"`2`\" => \"`3`\" ),"][id, f[left], f[right]]];
 line[{id_, left_, right_, cond_}] :=
-    Print[StringTemplate["rw!( \"`id`\"  ;   `left`   =>  `right` if `cond`)"][
+    Print[StringTemplate["rw!( \"`id`\" ; \"`left`\" => \"`right`\" if `cond`),"][
         <|
             "id" -> id, 
-            "left" -> ToString@CForm@ left,
-            "right" ->ToString@CForm@ right, 
+            "left" -> f[left],
+            "right" ->f[right], 
             "cond" -> pred[cond]
         |>
         ]];
+Print["vec!["];
 If[True,
     ReadString["./rules.wls"]//
     StringSplit[#, "\n"]&//
     Map[ToExpression] //
     Map[line]
 ]
-
+Print["]"]

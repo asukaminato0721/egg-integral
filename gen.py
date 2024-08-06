@@ -61,6 +61,30 @@ FILTER = {
     "LeQ",
     'IGeQ',
     'EqQ',
+    "Gamma",
+    "IntPart",
+    "FracPart",
+    "ArcTanh",
+    "csc",
+    "Sinh",
+    "Cosh",
+    "ArcSech",
+    "ArcCsch",
+    "ArcCsc",
+    "ArcSec",
+    "Derivative",
+    "Simp",
+    "ArcCot",
+    "ArcCoth",
+    "sec",
+    "Sec",
+    "Csc",
+    "Cot",
+    "cot",
+    "Tanh",
+    "tanh",
+    "Complex",
+    "f'" # Derivative
 }
 
 index = 0
@@ -90,7 +114,7 @@ def process_m_files(directory: str):
             ):
                 i = re.sub(r"\(\*(.*?)\*\)", " ", i)  # remove comment
                 i = (
-                    i.replace("_Symbol", "XX").replace("_.", " ").replace("_", " ")
+                    i.replace("_Symbol", "").replace("_.", "").replace("_", "")
                 )  # make it easier
                 i = i.replace("FreeQ", "freeq").replace(
                     "IntegerQ", "integerQ"

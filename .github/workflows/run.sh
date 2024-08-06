@@ -1,3 +1,3 @@
 #!/bin/sh
 set -eux
-cargo test -r -- --nocapture
+echo "currently it requires wolfram engine to build."
