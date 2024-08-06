@@ -251,117 +251,51 @@ fn pred5(
         }
     }
 }
+fn pred6(
+    a: &str,
+    b: &str,
+    c: &str,
+    d: &str,
+    e: &str,
+    f: &str,
+    pred: impl Fn(Num, Num, Num, Num, Num, Num) -> bool,
+) -> impl Fn(&mut EGraph, Id, &Subst) -> bool {
+    let a = a.parse().unwrap();
+    let b = b.parse().unwrap();
+    let c = c.parse().unwrap();
+    let d = d.parse().unwrap();
+    let e = e.parse().unwrap();
+    let f = f.parse().unwrap();
+    move |egraph, _, subst| {
+        if let (
+            &Some((a, _)),
+            &Some((b, _)),
+            &Some((c, _)),
+            &Some((d, _)),
+            &Some((e, _)),
+            &Some((f, _)),
+        ) = (
+            &egraph[subst[a]].data,
+            &egraph[subst[b]].data,
+            &egraph[subst[c]].data,
+            &egraph[subst[d]].data,
+            &egraph[subst[e]].data,
+            &egraph[subst[f]].data,
+        ) {
+            return pred(a, b, c, d, e, f);
+        } else {
+            true
+        }
+    }
+}
+fn Power(x: Num, n: i32) -> Num {
+    x.pow(n)
+}
 
 #[rustfmt::skip]
 pub fn rules() -> Vec<Rewrite> {
-    
-     vec![
-    rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
-    rw!("comm-mul";  "(* ?a ?b)"        => "(* ?b ?a)"),
-    rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
-    rw!("assoc-mul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
-
-    rw!("sub-canon"; "(- ?a ?b)" => "(+ ?a (* -1 ?b))"),
-    rw!("div-canon"; "(/ ?a ?b)" => "(* ?a (^ ?b -1))" if is_not_zero("?b")),
-    rw!("canon-sub"; "(+ ?a (* -1 ?b))"   => "(- ?a ?b)"),
-    rw!("canon-div"; "(* ?a (^ ?b -1))" => "(/ ?a ?b)" if is_not_zero("?b")),
-
-    rw!("zero-add"; "(+ ?a 0)" => "?a"),
-    rw!("same-add"; "(+ ?a ?a)" => "(* 2 ?a)"),
-    rw!("zero-mul"; "(* ?a 0)" => "0"),
-    rw!("one-mul";  "(* ?a 1)" => "?a"),
-
-    rw!("add-zero"; "?a" => "(+ ?a 0)"),
-    rw!("mul-one";  "?a" => "(* ?a 1)"),
-
-    rw!("cancel-sub"; "(- ?a ?a)" => "0"),
-    rw!("cancel-div"; "(/ ?a ?a)" => "1" if is_not_zero("?a")),
-
-    rw!("distribute"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
-    rw!("factor"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
-
-    rw!("pow-mul"; "(* (^ ?a ?b) (^ ?a ?c))" => "(^ ?a (+ ?b ?c))"),
-    rw!("pow0"; "(^ ?x 0)" => "1"
-        if is_not_zero("?x")),
-    rw!("pow1"; "(^ ?x 1)" => "?x"),
-    rw!("pow1-rev"; "?x" => "(^ ?x 1)"),
-    rw!("pow2"; "(^ ?x 2)" => "(* ?x ?x)"),
-    rw!("pow-recip"; "(^ ?x -1)" => "(/ 1 ?x)"
-        if is_not_zero("?x")),
-    rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero("?x")),
-
-    rw!("d-variable"; "(d ?x ?x)" => "1" if is_sym("?x")),
-    rw!("d-constant"; "(d ?x ?c)" => "0" if is_sym("?x") if freeq(&["?c"], "?x")),
-
-    rw!("d-add"; "(d ?x (+ ?a ?b))" => "(+ (d ?x ?a) (d ?x ?b))"),
-    rw!("d-mul"; "(d ?x (* ?a ?b))" => "(+ (* ?a (d ?x ?b)) (* ?b (d ?x ?a)))"),
-
-    rw!("d-sin"; "(d ?x (sin ?x))" => "(cos ?x)"),
-    rw!("d-cos"; "(d ?x (cos ?x))" => "(* -1 (sin ?x))"),
-    rw!("d-exp"; "(d ?x (exp ?x))" => "(exp ?x)"),
-    rw!("d-pow"; "(d ?x (^ ?x ?m))" => "(* ?m (^ ?x (- ?m 1)))"),
-
-    rw!("d-ln"; "(d ?x (ln ?x))" => "(/ 1 ?x)" if is_not_zero("?x")),
-
-    rw!("sqrt-pow"; "(sqrt ?x)" => "(^ ?x (/ 1 2))"),
-
-    rw!("pow-sqrt"; "(^ ?x (/ 1 2))" => "(sqrt ?x)"),
-
-    rw!("d-power";
-        "(d ?x (^ ?f ?g))" =>
-        "(* (^ ?f ?g)
-            (+ (* (d ?x ?f)
-                  (/ ?g ?f))
-               (* (d ?x ?g)
-                  (ln ?f))))"
-        if is_not_zero("?f")
-        if is_not_zero("?g")
-    ),
-    rw!("i-coff"; "(i (* ?c ?a) ?x)" => "(* ?c (i ?a ?x))" if freeq(&["?c"], "?x")),
-    rw!("i-one"; "(i 1 ?x)" => "?x"),
-    rw!("i-cos"; "(i (cos ?x) ?x)" => "(sin ?x)"),
-    rw!("i-sin"; "(i (sin ?x) ?x)" => "(* -1 (cos ?x))"),
-    rw!("i-exp"; "(i (exp ?x) ?x)" => "(exp ?x)"),
-    rw!("i-sum"; "(i (+ ?f ?g) ?x)" => "(+ (i ?f ?x) (i ?g ?x))"),
-    rw!("i-dif"; "(i (- ?f ?g) ?x)" => "(- (i ?f ?x) (i ?g ?x))"),
-    rw!("i-parts"; "(i (* ?a ?b) ?x)" =>
-        "(- (* ?a (i ?b ?x)) (i (* (d ?x ?a) (i ?b ?x)) ?x))"),
-    // eigenmath rule
-    rw!("L5"; "(i (exp (* ?a ?x)) ?x)" => "(/ (exp (* ?a ?x)) ?a)"),
-
-    // ---------------------
-    rw!("1.1.1.1L4"; "(i (/ 1 ?x) ?x)" => "(ln ?x)" ),
-
-    rw!("1.1.1.1L5  "; "(i (^ ?x ?m) ?x)" => "(/ (^ ?x (+ ?m 1)) (+ ?m 1))"
-    if freeq(&["?m"], "?x")
-    if pred1("?m", |m| m != (-1).into())),
-
-    rw!("1.1.1.1L7"; "(i (^ (+ ?a (* ?b ?x)) ?m)  ?x)" => "(/ (/ (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (+ 1 ?m)) ?b)"
-    if freeq(&["?a","?b","?m" ], "?x")
-    if pred1("?m", |m| m != (-1).into())
-    ),                      
-    rw!("1.1.1.2L4";"(i (* (^ (+ ?a (* ?b ?x)) ?m) (+ ?c (* ?d ?x)))  ?x)" => "(/ (/ (* ?d (* ?x (^ (+ ?a (* ?b ?x)) (+ 1 ?m)))) (+ 2 ?m)) ?b)" 
-    if freeq(&["?a","?b","?c","?d","?m"], "?x")
-    if pred5("?a","?b","?c","?d","?m", |a,b,c,d,m|a*d - b*c*(m + 2)==0.into())
-    ),
-    rw!("1.1.1.2L5";"(i (/ (^ (+ ?c (* ?d ?x)) -1) (+ ?a (* ?b ?x)))  ?x)"=>"(i (^ (+ (* ?a ?c) (* ?b (* ?d (^ ?x 2)))) -1)  ?x)" 
-    if freeq(&["?a","?b","?c","?d"], "?x")
-    if pred4("?a", "?b", "?c", "?d", |a,b,c,d|b*c + a*d==0.into())
-    ), // FreeQ[{a, b, c, d}, x] && EqQ[b*c + a*d, 0]
-    rw!("1.2.2.1L6"; "(i (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p) ?x)" => "(* (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* -2   ?p))   (* (^ (+ ?a   (+ (* ?b   (^ ?x   2))   (* ?c   (^ ?x   4))))   ?p)   (i (^ (+ ?b   (* 2   (* ?c   (^ ?x   2))))   (* 2   ?p))  ?x)))"
-    if freeq(&["?a","?p","?b", "?c"], "?x")
-    if pred3("?a", "?b", "?c", |a,b,c| b.pow(2)-a*c*4 == 0.into())
-    if pred1("?p", |p| p - Num::new(1, 2) == 0.into())
-    ),
-    rw!("4.1.0.1L5"; "(i (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   ?n)   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   ?m)) ?x)" => "(/ (/ (/ (/ (* (^ (* ?b   (cos (+ ?e   (* ?f   ?x))))   (+ 1   ?n))   (^ (* ?a   (sin (+ ?e   (* ?f   ?x))))   (+ 1   ?m)))   (+ 1   ?m))   ?f)   ?b)   ?a)"
-    if freeq(&["?a","?b","?e","?f","?m","?n"],"?x")
-    if pred2("?m", "?n", |m,n| m+n+2==0.into() && m!=(-1).into())
-    ),
-    rw!("1.1.1.4L6"; "(i (* (^ (+ ?a (* ?b ?x)) ?m) (* (^ (+ ?c (* ?d ?x)) ?n) (* (+ ?e (* ?f ?x)) (+ ?g (* ?h ?x)))))  ?x)" => "(- (/ (/ (/ (/ (* (^ (- (* ?b ?c) (* ?a ?d)) -2) (* (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (* (^ (+ ?c (* ?d ?x)) (+ 1 ?n)) (+ (* (^ ?b 2) (* ?c (* ?d (* ?e (* ?g (+ 1 ?n)))))) (+ (* (^ ?a 2) (* ?c (* ?d (* ?f (* ?h (+ 1 ?n)))))) (+ (* ?a (* ?b (- (+ (* (^ ?d 2) (* ?e (* ?g (+ 1 ?m)))) (* (^ ?c 2) (* ?f (* ?h (+ 1 ?m))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 2 (+ ?m ?n)))))))) (* (- (+ (* (^ ?a 2) (* (^ ?d 2) (* ?f (* ?h (+ 1 ?n))))) (* (^ ?b 2) (- (+ (* (^ ?c 2) (* ?f (* ?h (+ 1 ?m)))) (* (^ ?d 2) (* ?e (* ?g (+ 2 (+ ?m ?n)))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 1 ?m))))))) (* ?a (* ?b (* (^ ?d 2) (* (+ (* ?f ?g) (* ?e ?h)) (+ 1 ?n)))))) ?x))))))) (+ 1 ?n)) (+ 1 ?m)) ?d) ?b) (/ (/ (/ (/ (* (^ (- (* ?b ?c) (* ?a ?d)) -2) (* (+ (* (^ ?a 2) (* (^ ?d 2) (* ?f (* ?h (+ 2 (+ (* 3 ?n) (^ ?n 2))))))) (+ (* ?a (* ?b (* ?d (* (+ 1 ?n) (- (* 2 (* ?c (* ?f (* ?h (+ 1 ?m))))) (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (+ 3 (+ ?m ?n))))))))) (* (^ ?b 2) (- (+ (* (^ ?c 2) (* ?f (* ?h (+ 2 (+ (* 3 ?m) (^ ?m 2)))))) (* (^ ?d 2) (* ?e (* ?g (+ 6 (+ (^ ?m 2) (+ (* 5 ?n) (+ (^ ?n 2) (* ?m (+ 5 (* 2 ?n))))))))))) (* ?c (* ?d (* (+ (* ?f ?g) (* ?e ?h)) (* (+ 1 ?m) (+ 3 (+ ?m ?n)))))))))) (i (* (^ (+ ?a (* ?b ?x)) (+ 1 ?m)) (^ (+ ?c (* ?d ?x)) (+ 1 ?n)))  ?x))) (+ 1 ?n)) (+ 1 ?m)) ?d) ?b))"
-    if freeq(&["?a", "?b", "?c", "?d", "?e", "?f", "?g", "?h"], "?x")
-    if pred2("?m", "?n", |m, n| m < (-1).into() && n < (-1).into())
-    )
-    ]}
+        include!("../rule.in")
+    }
 
 #[cfg(test)]
 mod test {
@@ -375,6 +309,9 @@ mod test {
             //"(+ (* a (sin x)) (^ x m))", "(/ 5 x)",
             //"(* (^ (* 9   (cos (+ eee   (* f   x))))   n)   (^ (* 6   (sin (+ eee   (* f   x))))   m))",
             //"(^ (+ a (* b x)) 5)",
+            //"a",
+            //"(* x 4)",
+            "(* (exp x) (^ x 3))", //"(/ x (+ a (* b x)))"
             "a",
             "(* x 4)",
             "(* (exp x) (^ x 3))",
