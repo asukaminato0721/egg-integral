@@ -41,7 +41,7 @@ cargo build # currently will fail
    rw!("id", "left" => "right", if cond1 if cond2)
    ```
 
-   can't be write into
+   can't be written into
 
    ```rs
    rw!("id", "left" => "right", if cond1 && cond2)
