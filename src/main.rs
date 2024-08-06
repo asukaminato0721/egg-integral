@@ -299,7 +299,7 @@ pub fn rules() -> Vec<Rewrite> {
 
 #[cfg(test)]
 mod test {
-    use std::ops::Not;
+    use std::{ops::Not, time::Duration};
 
     use super::*;
     #[test]
@@ -312,6 +312,11 @@ mod test {
             //"a",
             //"(* x 4)",
             "(* (exp x) (^ x 3))", //"(/ x (+ a (* b x)))"
+            "a",
+            "(* x 4)",
+            "(* (exp x) (^ x 3))",
+            "(* (sqrt x) (ln x))",
+            "(* (ln x) (sqrt x))",
         ]
         .map(|x| format!("(i {x} x)"))
         {
@@ -320,6 +325,8 @@ mod test {
                 .with_explanations_enabled()
                 .with_expr(&start)
                 .with_node_limit(60000)
+                .with_time_limit(Duration::from_secs(1))
+                .with_scheduler(BackoffScheduler::default().with_initial_match_limit(3000))
                 .run(&rules);
             let extractor = Extractor::new(&runner.egraph, MathCostFn);
             let (_best_cost, best_expr) = extractor.find_best(runner.roots[0]);
@@ -328,6 +335,7 @@ mod test {
             dbg!(runner
                 .explain_equivalence(&start, &best_expr)
                 .get_flat_strings());
+            runner.print_report();
         }
     }
 }
